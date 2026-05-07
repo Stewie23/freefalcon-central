@@ -28,8 +28,13 @@ static int text_settings[]  = { 97, 80, 82, 15, 25, 6, 25, 25, 2, 13, 11, 12, 0,
 
 // Macros for writing data to hardware I/O ports
 #ifdef _MSC_VER
+#if _MSC_VER >= 1400
+#define OUT_BYTE(a, b) ((void)0)
+#define OUT_WORD(a, b) ((void)0)
+#else
 #define OUT_BYTE(a, b) _outp((a), (b))
 #define OUT_WORD(a, b) _outpw ((a), (b))
+#endif
 #else
 #define OUT_BYTE(a, b) outp((a), (b))
 #define OUT_WORD(a, b) outpw ((a), (b))

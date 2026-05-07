@@ -92,7 +92,7 @@ static inline float RsqrtSSE(float x)
     return x;
 }
 
-static inline float SqrtSSE(float x)
+static inline float SqrtSSE(float x) throw()
 {
     __asm
     {
@@ -103,8 +103,10 @@ static inline float SqrtSSE(float x)
     return x;
 }
 
+#if _MSC_VER < 1900
 #define sqrt SqrtSSE
 #define sqrtf SqrtSSE
+#endif
 
 #else //_MSC_VER >= 1300
 

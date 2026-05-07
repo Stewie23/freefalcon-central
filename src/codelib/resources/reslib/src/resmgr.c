@@ -129,6 +129,14 @@ MEM_POOL gResmgrMemPool = NULL;
 
 #if( RES_STREAMING_IO )
 
+#if defined(_MSC_VER) && _MSC_VER >= 1900
+#define RES_LEGACY_CRT_STREAMING_IO 0
+#else
+#define RES_LEGACY_CRT_STREAMING_IO 1
+#endif
+
+#if RES_LEGACY_CRT_STREAMING_IO
+
 RES_EXPORT FILE *  __cdecl _getstream(void);
 RES_EXPORT FILE *  __cdecl _openfile(const char *, const char *, int, FILE *);
 RES_EXPORT void    __cdecl _getbuf(FILE *);
@@ -159,6 +167,11 @@ extern int  __cdecl _flush(FILE * str);
 
 #define SHOULD_I_CALL_WITH(idx,param,retval)  if( RES_CALLBACK[(idx)] )\
                                                   retval = ((*(RES_CALLBACK[(idx)]))(param));
+#else
+#define _IOARCHIVE              0x00010000
+#define _IOLOOSE                0x00020000
+#define _IOSTRG                 0x00040000
+#endif /* RES_LEGACY_CRT_STREAMING_IO */
 #endif /* RES_STREAMING_IO */
 
 
@@ -4541,6 +4554,41 @@ RES_EXPORT void ResPurge(const char * archive, const char * volume, const int * 
 
 #if( RES_STREAMING_IO )
 
+#if !RES_LEGACY_CRT_STREAMING_IO
+
+#undef fopen
+#undef fclose
+#undef ftell
+#undef fread
+#undef fseek
+
+RES_EXPORT FILE * RES_FOPEN(const char * name, const char * mode)
+{
+    return fopen(name, mode);
+}
+
+int __cdecl RES_FCLOSE(FILE * file)
+{
+    return fclose(file);
+}
+
+long __cdecl RES_FTELL(FILE * stream)
+{
+    return ftell(stream);
+}
+
+size_t __cdecl RES_FREAD(void *buffer, size_t size, size_t num, FILE *stream)
+{
+    return fread(buffer, size, num, stream);
+}
+
+int __cdecl RES_FSEEK(FILE * stream, long offset, int whence)
+{
+    return fseek(stream, offset, whence);
+}
+
+#else /* RES_LEGACY_CRT_STREAMING_IO */
+
 /* -----------------------------------------------------------------------------------------------
 
     STREAM I/O Functions
@@ -5920,6 +5968,8 @@ int __cdecl RES_FSEEK(FILE * stream, long offset, int whence)
     return(0);
 }
 
+#endif /* RES_LEGACY_CRT_STREAMING_IO */
+
 #endif /* RES_STREAMING_IO */
 
 
@@ -5955,6 +6005,7 @@ int __cdecl RES_FSEEK(FILE * stream, long offset, int whence)
 
    ======================================================= */
 
+#if( RES_STREAMING_IO ) && RES_LEGACY_CRT_STREAMING_IO
 int __cdecl _filbuf(FILE * stream)
 {
     int retval = FALSE;     /* used for the callback */
@@ -6129,6 +6180,7 @@ int __cdecl _filbuf(FILE * stream)
     stream -> _cnt--;
     return(0xff bitand *stream -> _ptr++);
 }
+#endif /* RES_STREAMING_IO && RES_LEGACY_CRT_STREAMING_IO */
 
 
 

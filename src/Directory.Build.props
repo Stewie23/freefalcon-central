@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <WindowsSdkDir Condition="'$(WindowsSdkDir)'==''">C:\Program Files (x86)\Windows Kits\10\</WindowsSdkDir>
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)'==''">10.0.10240.0</WindowsTargetPlatformVersion>
+    <IncludePath>$(IncludePath);$(DX81_SDK)include</IncludePath>
+    <LibraryPath>$(LibraryPath);$(VCToolsInstallDir)lib\x86;$(DX81_SDK)lib</LibraryPath>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)codelib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_ALLOW_RTCc_IN_STL;POINTER_64=;POINTER_32=;POINTER_SIGNED=;POINTER_UNSIGNED=;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)codelib\include;$(DX81_SDK)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+</Project>

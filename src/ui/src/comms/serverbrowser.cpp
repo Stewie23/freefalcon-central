@@ -32,9 +32,9 @@
 #include "remotelb.h"
 
 #include "include/comsup.h"
-extern CComModule _Module;
 #include <atlbase.h>
 #include <atlcom.h>
+extern CComModule _Module;
 #include "../../../gnet/include/core.h"       // main symbols
 
 // Imports
@@ -86,9 +86,13 @@ public:
     GNETCORELib::IRemoteMasterServerPtr m_pMasterServer;
     DWORD m_dwMasterServerCookie;
     DWORD m_dwMasterServerCookie2;
+    LONG m_cRef;
     bool m_bUpdating;
 
     // Implementation
+    STDMETHOD(QueryInterface)(REFIID riid, void **ppvObject);
+    STDMETHOD_(ULONG, AddRef)();
+    STDMETHOD_(ULONG, Release)();
     void Init();
     void Cleanup();
     void Update();
@@ -110,7 +114,7 @@ class GNetUpdater : public CComObject<CGNetUpdater>
 public:
     GNetUpdater()
     {
-        AddRef();
+        CGNetUpdater::AddRef();
     }
 };
 
@@ -1035,7 +1039,7 @@ void C_ServerItem::Setup(IGame *_pGame, C_TreeList *pParent)
     _bstr_t str;
     int x, n;
 
-    SetID((long) pGame);
+    SetID((long)pGame.GetInterfacePtr());
     SetType(0);
     SetDefaultFlags();
     SetReady(1);
@@ -1266,7 +1270,38 @@ DWORD C_ServerItem::GetIP()
 CGNetUpdater::CGNetUpdater()
 {
     m_dwMasterServerCookie = m_dwMasterServerCookie2 = 0;
+    m_cRef = 0;
     m_bUpdating = false;
+}
+
+STDMETHODIMP CGNetUpdater::QueryInterface(REFIID riid, void **ppvObject)
+{
+    if (ppvObject == NULL)
+        return E_POINTER;
+
+    if (riid == IID_IUnknown || riid == IID_IGameEvents)
+        *ppvObject = static_cast<IGameEvents *>(this);
+    else if (riid == IID_IRemoteMasterServerEvents)
+        *ppvObject = static_cast<IRemoteMasterServerEvents *>(this);
+    else
+    {
+        *ppvObject = NULL;
+        return E_NOINTERFACE;
+    }
+
+    AddRef();
+    return S_OK;
+}
+
+STDMETHODIMP_(ULONG) CGNetUpdater::AddRef()
+{
+    return InterlockedIncrement(&m_cRef);
+}
+
+STDMETHODIMP_(ULONG) CGNetUpdater::Release()
+{
+    LONG refCount = InterlockedDecrement(&m_cRef);
+    return refCount < 0 ? 0 : (ULONG)refCount;
 }
 
 void CGNetUpdater::Init()

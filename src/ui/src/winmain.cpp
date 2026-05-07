@@ -9,6 +9,7 @@
 #include <StdIO.h>
 #include <time.h>
 #include <windows.h>
+#include <windowsx.h>
 #include <WinSock2.h>
 // END OF SYSTEM INCLUDES
 

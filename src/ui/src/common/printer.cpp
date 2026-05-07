@@ -1,6 +1,7 @@
 // Trivial COM Printer interface
 // Julian Onions
 #include <windows.h>
+#include <tchar.h>
 #include "falclib.h"
 #import "GMPrint.tlb"
 #include <atlbase.h>

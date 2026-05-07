@@ -1,0 +1,7 @@
+<Project>
+  <ItemDefinitionGroup>
+    <Link>
+      <AdditionalLibraryDirectories>$(VCToolsInstallDir)lib\x86;$(WindowsSdkDir)Lib\$(WindowsTargetPlatformVersion)\um\x86;$(WindowsSdkDir)Lib\$(WindowsTargetPlatformVersion)\ucrt\x86;$(DX81_SDK)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>
