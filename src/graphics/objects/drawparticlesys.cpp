@@ -5151,6 +5151,7 @@ bool DrawableParticleSys::PS_LoadParameters(void)
             if (fgets(buffer, sizeof buffer, fp) == 0)
             {
                 fclose(fp);
+                fp = NULL;
                 break;
             }
         }
@@ -6132,7 +6133,8 @@ bool DrawableParticleSys::PS_LoadParameters(void)
 
 
     //------------------
-    fclose(fp);
+    if (fp)
+        fclose(fp);
     //------------------
 
     if (psContext)

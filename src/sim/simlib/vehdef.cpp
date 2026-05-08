@@ -15,6 +15,48 @@ extern MEM_POOL gReadInMemPool;
 SimMoverDefinition** moverDefinitionData = NULL;
 int NumSimMoverDefinitions = 0;
 
+static SimlibFileClass* OpenRequiredSimFile(char* fileName)
+{
+    SimlibFileClass* file = SimlibFileClass::Open(fileName, SIMLIB_READ);
+
+    if (file == NULL)
+    {
+        char alternateName[_MAX_PATH];
+        strncpy(alternateName, fileName, sizeof(alternateName) - 1);
+        alternateName[sizeof(alternateName) - 1] = '\0';
+        _strlwr(alternateName);
+
+        if (strcmp(alternateName, fileName))
+            file = SimlibFileClass::Open(alternateName, SIMLIB_READ);
+    }
+
+    if (file == NULL)
+    {
+        char alternateName[_MAX_PATH];
+        strncpy(alternateName, fileName, sizeof(alternateName) - 1);
+        alternateName[sizeof(alternateName) - 1] = '\0';
+
+        for (char *ptr = alternateName; *ptr; ptr++)
+        {
+            if (*ptr == '\\')
+                *ptr = '/';
+        }
+
+        if (strcmp(alternateName, fileName))
+            file = SimlibFileClass::Open(alternateName, SIMLIB_READ);
+    }
+
+    if (file == NULL)
+    {
+        char message[_MAX_PATH + 160];
+        sprintf(message, "Failed to open sim mover definition file:\n\n%s\n\nError: %d\n%s  %s", fileName, __LINE__, __FILE__, __DATE__);
+        MessageBox(NULL, message, "FreeFalcon startup error", MB_OK bitor MB_ICONERROR);
+        exit(-1);
+    }
+
+    return file;
+}
+
 SimMoverDefinition::SimMoverDefinition(void)
 {
     numSensors = 0;
@@ -31,7 +73,7 @@ void SimMoverDefinition::ReadSimMoverDefinitionData(void)
     SimlibFileClass* vehList;
     int vehicleType;
 
-    vehList = SimlibFileClass::Open(SIM_VEHICLE_DEFINITION_FILE, SIMLIB_READ);
+    vehList = OpenRequiredSimFile(SIM_VEHICLE_DEFINITION_FILE);
 
     NumSimMoverDefinitions = atoi(vehList->GetNext());
 #ifdef USE_SH_POOLS
@@ -99,7 +141,7 @@ SimACDefinition::SimACDefinition(char* fileName)
     int i;
     SimlibFileClass* acFile;
 
-    acFile = SimlibFileClass::Open(fileName, SIMLIB_READ);
+    acFile = OpenRequiredSimFile(fileName);
 
     // What type of combat does it do?
     combatClass = (CombatClass)atoi(acFile->GetNext());
@@ -152,7 +194,7 @@ SimWpnDefinition::SimWpnDefinition(char* fileName)
 {
     SimlibFileClass* wpnFile;
 
-    wpnFile = SimlibFileClass::Open(fileName, SIMLIB_READ);
+    wpnFile = OpenRequiredSimFile(fileName);
 
     flags = atoi(wpnFile->GetNext());
     cd  = (float)atof(wpnFile->GetNext());
@@ -180,7 +222,7 @@ SimHeloDefinition::SimHeloDefinition(char* fileName)
     int i;
     SimlibFileClass* heloFile;
 
-    heloFile = SimlibFileClass::Open(fileName, SIMLIB_READ);
+    heloFile = OpenRequiredSimFile(fileName);
 
     airframeIndex = atoi(heloFile->GetNext());
     numSensors  =  atoi(heloFile->GetNext());
@@ -215,7 +257,7 @@ SimGroundDefinition::SimGroundDefinition(char* fileName)
     int i;
     SimlibFileClass* gndFile;
 
-    gndFile = SimlibFileClass::Open(fileName, SIMLIB_READ);
+    gndFile = OpenRequiredSimFile(fileName);
 
     numSensors  =  atoi(gndFile->GetNext());
 

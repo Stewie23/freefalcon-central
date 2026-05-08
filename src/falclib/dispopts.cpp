@@ -8,6 +8,7 @@
 \***************************************************************************/
 #include <stdio.h>
 #include <stdlib.h>
+#include <direct.h>
 #include "dispopts.h"
 #include "f4find.h"
 #include "graphics/include/devmgr.h"
@@ -50,7 +51,10 @@ int DisplayOptionsClass::LoadOptions(char *filename)
     FILE *fp;
     size_t success = 0;
     char path[_MAX_PATH];
+    char configPath[_MAX_PATH];
 
+    sprintf(configPath, "%s\\config", FalconDataDirectory);
+    _mkdir(configPath);
     sprintf(path, "%s\\config\\%s.dsp", FalconDataDirectory, filename);
     fp = fopen(path, "rb");
 
@@ -59,7 +63,17 @@ int DisplayOptionsClass::LoadOptions(char *filename)
         MonoPrint("Couldn't open display options\n");
         Initialize();
         fp = fopen(path, "wb");
-        fclose(fp);
+
+        if (fp)
+        {
+            fwrite(this, sizeof(class DisplayOptionsClass), 1, fp);
+            fclose(fp);
+        }
+        else
+        {
+            MonoPrint("Couldn't create display options\n");
+        }
+
         return TRUE;
     }
 
@@ -138,7 +152,10 @@ int DisplayOptionsClass::SaveOptions(void)
     FILE *fp;
     size_t success = 0;
     char path[_MAX_PATH];
+    char configPath[_MAX_PATH];
 
+    sprintf(configPath, "%s\\config", FalconDataDirectory);
+    _mkdir(configPath);
     sprintf(path, "%s\\config\\display.dsp", FalconDataDirectory);
 
     if ((fp = fopen(path, "wb")) == NULL)

@@ -42,6 +42,8 @@ void DisplayDevice::Setup(int driverNum, int devNum, int width, int height, int 
     WNDCLASS wc;
     int resNum;
     UInt w, h, d;
+    int fallbackResNum = -1;
+    UInt fallbackDepth = 0;
 
     ShiAssert( not IsReady());
 
@@ -74,13 +76,31 @@ void DisplayDevice::Setup(int driverNum, int devNum, int width, int height, int 
                 // Found it
                 break;
             }
+
+            if ((w == (unsigned) width) and (h == (unsigned)height) and (d >= 16))
+            {
+                if ((fallbackResNum < 0) or (d < fallbackDepth))
+                {
+                    fallbackResNum = resNum;
+                    fallbackDepth = d;
+                }
+            }
         }
         else
         {
             // Ran off the end of the list
-            char message[80];
-            sprintf(message, "Requested unavailable resolution %0dx%0dx%0d", width, height, depth);
-            ShiError(message);
+            if (fallbackResNum >= 0)
+            {
+                resNum = fallbackResNum;
+                depth = fallbackDepth;
+                break;
+            }
+            else
+            {
+                char message[80];
+                sprintf(message, "Requested unavailable resolution %0dx%0dx%0d", width, height, depth);
+                ShiError(message);
+            }
         }
     }
 

@@ -124,26 +124,23 @@ MissileInputData* MissileInputRead(SimlibFileClass* inputFile)
     // me123 until the dat files are up to date
     //inputData->SensorPrecision= (float)atoi(inputFile->GetNext());
 
-    // LRKLUDGE
-    //inputData->mslLoftTime = 10.0F;//40.0F;//me123 from 10
-    // 2002-01-28 MN have missile loft time defined by data file
-    inputData->mslLoftTime = (float)atof(inputFile->GetNext());
-
-    //me123
-    inputData->boostguidesec = (float)atof(inputFile->GetNext()); //me123 how many sec we are in boostguide mode
-    inputData->terminalguiderange = (float)atof(inputFile->GetNext()); //me123 what range we transfere to terminal guidence
-    inputData->boostguideSensorPrecision = (float)atof(inputFile->GetNext());
-    inputData->sustainguideSensorPrecision = (float)atof(inputFile->GetNext());
-    inputData->terminalguideSensorPrecision = (float)atof(inputFile->GetNext());
-    inputData->boostguideLead = (float)atof(inputFile->GetNext());
-    inputData->sustainguideLead = (float)atof(inputFile->GetNext());
-    inputData->terminalguideLead = (float)atof(inputFile->GetNext());
-    inputData->boostguideGnav = (float)atof(inputFile->GetNext());
-    inputData->sustainguideGnav = (float)atof(inputFile->GetNext());
-    inputData->terminalguideGnav = (float)atof(inputFile->GetNext());
-    inputData->boostguideBwap = (float)atof(inputFile->GetNext());
-    inputData->sustainguideBwap = (float)atof(inputFile->GetNext());
-    inputData->terminalguideBwap = (float)atof(inputFile->GetNext());
+    // Legacy Falcon 4.0 missile data moves directly from Display to aero tables.
+    // Use stable defaults for later guidance fields so the aero parser stays aligned.
+    inputData->mslLoftTime = 0.0F;
+    inputData->boostguidesec = 0.0F;
+    inputData->terminalguiderange = 0.0F;
+    inputData->boostguideSensorPrecision = 1.0F;
+    inputData->sustainguideSensorPrecision = 1.0F;
+    inputData->terminalguideSensorPrecision = 1.0F;
+    inputData->boostguideLead = 1.0F;
+    inputData->sustainguideLead = 1.0F;
+    inputData->terminalguideLead = 1.0F;
+    inputData->boostguideGnav = inputData->mslGnav;
+    inputData->sustainguideGnav = inputData->mslGnav;
+    inputData->terminalguideGnav = inputData->mslGnav;
+    inputData->boostguideBwap = inputData->mslBwap;
+    inputData->sustainguideBwap = inputData->mslBwap;
+    inputData->terminalguideBwap = inputData->mslBwap;
 
     return (inputData);
 }

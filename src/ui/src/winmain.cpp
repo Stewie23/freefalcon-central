@@ -112,6 +112,113 @@ const char* FREE_FALCON_VERSION = "7.0.0";
 // END OF GLOBAL CONSTANTS
 
 
+static bool DirectoryExists(const char *path)
+{
+    DWORD attributes = GetFileAttributes(path);
+    return attributes != INVALID_FILE_ATTRIBUTES and (attributes bitand FILE_ATTRIBUTE_DIRECTORY);
+}
+
+static bool FileExists(const char *path)
+{
+    DWORD attributes = GetFileAttributes(path);
+    return attributes != INVALID_FILE_ATTRIBUTES and not (attributes bitand FILE_ATTRIBUTE_DIRECTORY);
+}
+
+static void RemoveTrailingSlash(char *path)
+{
+    size_t length = strlen(path);
+
+    while (length > 3 and (path[length - 1] == '\\' or path[length - 1] == '/'))
+    {
+        path[length - 1] = '\0';
+        length--;
+    }
+}
+
+static bool HasFalconData(const char *path)
+{
+    char testPath[_MAX_PATH];
+
+    sprintf(testPath, "%s\\weather\\tod.lst", path);
+
+    if (FileExists(testPath))
+        return true;
+
+    sprintf(testPath, "%s\\terrdata\\Korea\\weather\\tod.lst", path);
+
+    if (FileExists(testPath))
+        return true;
+
+    sprintf(testPath, "%s\\terrdata", path);
+    return DirectoryExists(testPath);
+}
+
+static bool TryUseFalconDataDirectory(const char *path)
+{
+    if (not path or not path[0])
+        return false;
+
+    char candidate[_MAX_PATH];
+    strncpy(candidate, path, sizeof(candidate) - 1);
+    candidate[sizeof(candidate) - 1] = '\0';
+    RemoveTrailingSlash(candidate);
+
+    if (DirectoryExists(candidate) and HasFalconData(candidate))
+    {
+        strcpy(FalconDataDirectory, candidate);
+        return true;
+    }
+
+    return false;
+}
+
+static bool TryUseFalconDataDirectoryOrChild(const char *path)
+{
+    if (TryUseFalconDataDirectory(path))
+        return true;
+
+    if (not path or not path[0])
+        return false;
+
+    char candidate[_MAX_PATH];
+    sprintf(candidate, "%s\\Falcon4", path);
+    return TryUseFalconDataDirectory(candidate);
+}
+
+static void UseFallbackFalconDataDirectory(void)
+{
+    char candidate[_MAX_PATH];
+
+    if (GetEnvironmentVariable("FREEFALCON_BASE_DIR", candidate, sizeof(candidate)) > 0 and TryUseFalconDataDirectoryOrChild(candidate))
+        return;
+
+    if (GetCurrentDirectory(sizeof(candidate), candidate) > 0 and TryUseFalconDataDirectoryOrChild(candidate))
+        return;
+
+    if (GetModuleFileName(NULL, candidate, sizeof(candidate)) > 0)
+    {
+        char *slash = strrchr(candidate, '\\');
+
+        if (slash)
+            *slash = '\0';
+
+        for (int i = 0; i < 6; i++)
+        {
+            if (TryUseFalconDataDirectoryOrChild(candidate))
+                return;
+
+            slash = strrchr(candidate, '\\');
+
+            if (not slash)
+                break;
+
+            *slash = '\0';
+        }
+    }
+
+    strcpy(FalconDataDirectory, ".\\");
+}
+
 
 // GLOBAL VARIABLES
 bool intro_movie = true;
@@ -822,7 +929,7 @@ void ParseCommandLine(LPSTR cmdLine)
     LONG retval = ERROR_SUCCESS;
     DWORD value;
     DWORD type, size;
-    HKEY theKey;
+    HKEY theKey = NULL;
 
 
 
@@ -844,15 +951,18 @@ void ParseCommandLine(LPSTR cmdLine)
     retval = RegOpenKeyEx(HKEY_LOCAL_MACHINE, FALCON_REGISTRY_KEY,
                           0, KEY_QUERY_VALUE, &theKey);
 
-    size = sizeof(ComIPGetHostIDIndex);
-    retval = RegQueryValueEx(theKey, "HostIDX", 0, &type, (LPBYTE)&value, &size);
-
     if (retval == ERROR_SUCCESS)
     {
-        ComIPGetHostIDIndex = value;
-    }
+        size = sizeof(ComIPGetHostIDIndex);
+        retval = RegQueryValueEx(theKey, "HostIDX", 0, &type, (LPBYTE)&value, &size);
 
-    retval = RegCloseKey(theKey);
+        if (retval == ERROR_SUCCESS)
+        {
+            ComIPGetHostIDIndex = value;
+        }
+
+        RegCloseKey(theKey);
+    }
 
     // Parse Command Line
     arg = strtok(cmdLine, " ");
@@ -1112,23 +1222,32 @@ void ParseCommandLine(LPSTR cmdLine)
     size = sizeof(FalconDataDirectory);
     retval = RegOpenKeyEx(HKEY_LOCAL_MACHINE, FALCON_REGISTRY_KEY,
                           0, KEY_QUERY_VALUE, &theKey);
-    retval = RegQueryValueEx(theKey, "baseDir", 0, &type, (LPBYTE)&FalconDataDirectory, &size);
 
-    if (retval not_eq ERROR_SUCCESS)
+    if (retval == ERROR_SUCCESS)
+        retval = RegQueryValueEx(theKey, "baseDir", 0, &type, (LPBYTE)&FalconDataDirectory, &size);
+
+    if (retval not_eq ERROR_SUCCESS or not DirectoryExists(FalconDataDirectory))
     {
-        SimLibPrintMessage("No Registry Variable\n");
-        strcpy(FalconDataDirectory, ".\\");
+        UseFallbackFalconDataDirectory();
     }
 
     size = sizeof(FalconTerrainDataDir);
-    RegQueryValueEx(theKey, "theaterDir", 0, &type, (LPBYTE)FalconTerrainDataDir, &size);
+    retval = theKey ? RegQueryValueEx(theKey, "theaterDir", 0, &type, (LPBYTE)FalconTerrainDataDir, &size) : ERROR_FILE_NOT_FOUND;
+
+    if (retval not_eq ERROR_SUCCESS or not DirectoryExists(FalconTerrainDataDir))
+        sprintf(FalconTerrainDataDir, "%s\\terrdata\\Korea", FalconDataDirectory);
+
     size = sizeof(FalconObjectDataDir);
-    RegQueryValueEx(theKey, "objectDir", 0, &type, (LPBYTE)FalconObjectDataDir, &size);
+    retval = theKey ? RegQueryValueEx(theKey, "objectDir", 0, &type, (LPBYTE)FalconObjectDataDir, &size) : ERROR_FILE_NOT_FOUND;
+
+    if (retval not_eq ERROR_SUCCESS or not DirectoryExists(FalconObjectDataDir))
+        sprintf(FalconObjectDataDir, "%s\\terrdata\\objects", FalconDataDirectory);
+
     strcpy(Falcon3DDataDir, FalconObjectDataDir);
     size = sizeof(FalconMiscTexDataDir);
 
     size = sizeof(FalconMovieMode);
-    retval = RegQueryValueEx(theKey, "movieMode", 0, &type, (LPBYTE)FalconMovieMode, &size);
+    retval = theKey ? RegQueryValueEx(theKey, "movieMode", 0, &type, (LPBYTE)FalconMovieMode, &size) : ERROR_FILE_NOT_FOUND;
 
     if (retval not_eq ERROR_SUCCESS)
         strcpy(FalconMovieMode, "Hurry");
@@ -1136,7 +1255,7 @@ void ParseCommandLine(LPSTR cmdLine)
         strcpy(FalconMovieMode, "Hurry");
 
     size = sizeof(FalconUIArtDirectory);
-    retval = RegQueryValueEx(theKey, "uiArtDir", 0, &type, (LPBYTE)FalconUIArtDirectory, &size);
+    retval = theKey ? RegQueryValueEx(theKey, "uiArtDir", 0, &type, (LPBYTE)FalconUIArtDirectory, &size) : ERROR_FILE_NOT_FOUND;
 
     if (retval not_eq ERROR_SUCCESS)
     {
@@ -1145,7 +1264,7 @@ void ParseCommandLine(LPSTR cmdLine)
     }
 
     size = sizeof(FalconUISoundDirectory);
-    retval = RegQueryValueEx(theKey, "uiSoundDir", 0, &type, (LPBYTE)FalconUISoundDirectory, &size);
+    retval = theKey ? RegQueryValueEx(theKey, "uiSoundDir", 0, &type, (LPBYTE)FalconUISoundDirectory, &size) : ERROR_FILE_NOT_FOUND;
 
     if (retval not_eq ERROR_SUCCESS)
     {
@@ -1154,7 +1273,9 @@ void ParseCommandLine(LPSTR cmdLine)
 
     strcpy(FalconSoundThrDirectory, FalconDataDirectory);
     strcat(FalconSoundThrDirectory, "\\sounds");
-    retval = RegCloseKey(theKey);
+
+    if (theKey)
+        RegCloseKey(theKey);
 }
 
 
@@ -1194,6 +1315,12 @@ void SystemLevelInit()
     }
     else
     {
+        sprintf(tmpPath, "%s\\Simdata.ZIP", FalconDataDirectory);
+        ResAttach(FalconDataDirectory, tmpPath, FALSE);
+
+        sprintf(tmpPath, "%s\\Zips\\Simdata.ZIP", FalconDataDirectory);
+        ResAttach(FalconDataDirectory, tmpPath, FALSE);
+
         sprintf(tmpPath, "%s\\sim", FalconDataDirectory); // JPO - so we can find raw sim files
 
         if (SimPathHandle == -1)

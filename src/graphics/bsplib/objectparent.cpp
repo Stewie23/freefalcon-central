@@ -84,9 +84,33 @@ void ObjectParent::SetupTable(char *basename)
 
     if (file < 0)
     {
-        char message[256];
-        sprintf(message, "Failed to open object header file %s\n", filename);
-        ShiError(message);
+        TheObjectListLength = 1;
+
+#ifdef USE_SH_POOLS
+        TheObjectList = (ObjectParent *)MemAllocPtr(gBSPLibMemPool, sizeof(ObjectParent) * TheObjectListLength, 0);
+#else
+        TheObjectList = new ObjectParent[TheObjectListLength];
+#endif
+
+        if (TheObjectList)
+        {
+            TheObjectList[0].radius = 0.0f;
+            TheObjectList[0].minX = TheObjectList[0].maxX = 0.0f;
+            TheObjectList[0].minY = TheObjectList[0].maxY = 0.0f;
+            TheObjectList[0].minZ = TheObjectList[0].maxZ = 0.0f;
+            TheObjectList[0].RadarSign = 0.0f;
+            TheObjectList[0].IRSign = 0.0f;
+            TheObjectList[0].nTextureSets = 0;
+            TheObjectList[0].nDynamicCoords = 0;
+            TheObjectList[0].nLODs = 0;
+            TheObjectList[0].nSwitch = 0;
+            TheObjectList[0].nDOF = 0;
+            TheObjectList[0].nSlots = 0;
+            TheObjectList[0].nSwitches = 0;
+            TheObjectList[0].nDOFs = 0;
+        }
+
+        return;
     }
 
     // Read the format version
@@ -363,6 +387,9 @@ void ObjectParent::FlushReferences(void)
 
 void ObjectParent::ReferenceTexSet(DWORD TexSet, DWORD MaxTexSet)
 {
+    if (not nLODs or not pLODs)
+        return;
+
     LODrecord *record = pLODs + nLODs - 1;
 
     while (record >= pLODs)
@@ -376,6 +403,9 @@ void ObjectParent::ReleaseTexSet(DWORD TexSet, DWORD MaxTexSet)
 {
     // RED - if object is locked, do not release
     if (Locked) return;
+
+    if (not nLODs or not pLODs)
+        return;
 
     LODrecord *record = pLODs + nLODs - 1;
 
@@ -444,6 +474,17 @@ void ObjectParent::ReferenceWithFetch(void)
 
 void ObjectParent::Release(bool Unlock)
 {
+    if (not nLODs or not pLODs)
+    {
+        if (refCount)
+            refCount--;
+
+        if (Unlock)
+            Locked = false;
+
+        return;
+    }
+
     LODrecord *record = pLODs + nLODs - 1;
 
     // Now reduce our reference count

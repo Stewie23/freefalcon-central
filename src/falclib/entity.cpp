@@ -134,6 +134,87 @@ void ReadClassTable(void)
 
 FILE *ErrorFH; // MLR 5/15/2004 -
 
+struct EntityTableFormat
+{
+    unsigned int recordSize;
+    const char *name;
+};
+
+static void LogEntityTableSizeMismatch(const char *ext, unsigned int fileSize, short entries, const EntityTableFormat *formats, int formatCount)
+{
+    char message[256];
+    char sizes[128];
+
+    sizes[0] = '\0';
+
+    for (int i = 0; i < formatCount; i++)
+    {
+        char size[32];
+        sprintf(size, "%s%s=%u", i ? "," : "", formats[i].name, formats[i].recordSize);
+        strcat(sizes, size);
+    }
+
+    sprintf(message, "Entity table %s size mismatch: file=%u entries=%d accepted record sizes=%s\n",
+            ext, fileSize, entries, sizes);
+    MonoPrint(message);
+}
+
+static bool ReadEntityTableHeader(FILE *fp, const char *ext, short *entries, unsigned int *fileSize, unsigned int *recordSize,
+                                  const EntityTableFormat *formats, int formatCount)
+{
+    fseek(fp, 0, SEEK_END);
+    *fileSize = ftell(fp);
+
+    if (g_bFFDBC)
+    {
+        short iknt = 0;
+        fseek(fp, -2, SEEK_END);
+
+        if (fread(&iknt, sizeof(short), 1, fp) < 1)
+            return false;
+
+        fseek(fp, 0, SEEK_SET);
+
+        if (fread(entries, sizeof(short), 1, fp) < 1)
+            return false;
+
+        if (*entries == 0)
+            *entries = iknt;
+    }
+    else
+    {
+        fseek(fp, 0, SEEK_SET);
+
+        if (fread(entries, sizeof(short), 1, fp) < 1)
+            return false;
+    }
+
+    for (int i = 0; i < formatCount; i++)
+    {
+        unsigned int expectedSize = formats[i].recordSize * *entries + sizeof(short);
+
+        if (*fileSize == expectedSize)
+        {
+            *recordSize = formats[i].recordSize;
+            return true;
+        }
+    }
+
+    if (g_bFFDBC)
+    {
+        *recordSize = formats[0].recordSize;
+        return true;
+    }
+
+    LogEntityTableSizeMismatch(ext, *fileSize, *entries, formats, formatCount);
+    return false;
+}
+
+static bool ReadCurrentEntityRecords(FILE *fp, void *table, unsigned int recordSize, short entries)
+{
+    return fread(table, recordSize, entries, fp) == (size_t)entries;
+}
+
 int LoadClassTable(char *filename)
 {
     int i;
@@ -569,7 +650,11 @@ int LoadRocketData(char *filename)
     short entries;
 
     if ((fp = OpenCampFile(filename, "RKT", "rb")) == NULL)
-        return 0;
+    {
+        RocketDataTable = NULL;
+        NumRocketTypes = 0;
+        return 1;
+    }
 
     fseek(fp, 0, SEEK_END); // JPO - work out if the file looks the right size.
     unsigned int size = ftell(fp);
@@ -620,9 +705,19 @@ int LoadDirtyData(char *filename)
 {
     FILE* fp;
     short entries;
+    const short defaultDirtyDataPriorities = 184;
 
     if ((fp = OpenCampFile(filename, "DDP", "rb")) == NULL)
-        return 0;
+    {
+        DDP = new DirtyDataClassType[defaultDirtyDataPriorities];
+        ShiAssert(DDP);
+
+        for (int i = 0; i < defaultDirtyDataPriorities; i++)
+            DDP[i].priority = SEND_SOON;
+
+        NumDirtyDataPriorities = defaultDirtyDataPriorities;
+        return 1;
+    }
 
     fseek(fp, 0, SEEK_END); // JPO - work out if the file looks the right size.
     unsigned int size = ftell(fp);
@@ -772,37 +867,22 @@ int LoadWeaponListData(char *filename)
 {
     FILE* fp;
     short entries;
+    const unsigned int legacyWeaponListEntrySize = 16 + (sizeof(short) * 32) + (sizeof(uchar) * 32);
+    const EntityTableFormat formats[] =
+    {
+        { sizeof(WeaponListDataType), "current" },
+        { legacyWeaponListEntrySize, "legacy32" },
+    };
+    unsigned int size;
+    unsigned int recordSize;
 
     if ((fp = OpenCampFile(filename, "WLD", "rb")) == NULL)
         return 0;
 
-    fseek(fp, 0, SEEK_END); // JPO - work out if the file looks the right size.
-    unsigned int size = ftell(fp);
-
-    // FF - DB Control
-    if (g_bFFDBC)
+    if (not ReadEntityTableHeader(fp, "WLD", &entries, &size, &recordSize, formats, sizeof(formats) / sizeof(formats[0])))
     {
-        // FF - get real count of entries
-        short iknt = 0;
-        fseek(fp, 0, SEEK_END);
-        fseek(fp, -2, SEEK_CUR);
-        fread(&iknt, sizeof(short), 1, fp);
-        fseek(fp, 0, SEEK_SET);
-        // Move pointer past the 0 entries
-        fread(&entries, sizeof(short), 1, fp);
-
-        if (entries == 0)
-            entries = iknt;
-    }
-    else
-    {
-        fseek(fp, 0, SEEK_SET);
-
-        if (fread(&entries, sizeof(short), 1, fp) < 1)
-            return 0;
-
-        if (size not_eq sizeof(WeaponListDataType) * entries + 2)
-            return 0;
+        fclose(fp);
+        return 0;
     }
 
     //fseek(fp, 0, SEEK_SET);
@@ -811,7 +891,35 @@ int LoadWeaponListData(char *filename)
     //if (size not_eq sizeof(WeaponListDataType) * entries + 2)
     // return 0;
     WeaponListDataTable = new WeaponListDataType[entries];
-    fread(WeaponListDataTable, sizeof(WeaponListDataType), entries, fp);
+
+    if (recordSize == legacyWeaponListEntrySize)
+    {
+        memset(WeaponListDataTable, 0, sizeof(WeaponListDataType) * entries);
+
+        for (int i = 0; i < entries; i++)
+        {
+            if (fread(WeaponListDataTable[i].Name, sizeof(WeaponListDataTable[i].Name), 1, fp) < 1 or
+                fread(WeaponListDataTable[i].WeaponID, sizeof(short), 32, fp) < 32 or
+                fread(WeaponListDataTable[i].Quantity, sizeof(uchar), 32, fp) < 32)
+            {
+                delete [] WeaponListDataTable;
+                WeaponListDataTable = NULL;
+                fclose(fp);
+                return 0;
+            }
+        }
+    }
+    else
+    {
+        if (not ReadCurrentEntityRecords(fp, WeaponListDataTable, sizeof(WeaponListDataType), entries))
+        {
+            delete [] WeaponListDataTable;
+            WeaponListDataTable = NULL;
+            fclose(fp);
+            return 0;
+        }
+    }
+
     fclose(fp);
     return 1;
 }
@@ -883,7 +991,7 @@ int LoadPtHeaderData(char *filename)
         if ((ObjDataTable[l].PtDataIndex >= NumPtHeaders) or (ObjDataTable[l].PtDataIndex < 0))
         {
             if (ErrorFH)
-                fprintf(ErrorFH, "ObjDataTable[%d].PtDataIndex >= NumPtHeaders = %d or < 0\n",
+                fprintf(ErrorFH, "ObjDataTable[%d].PtDataIndex=%d >= NumPtHeaders = %d or < 0\n",
                         l, ObjDataTable[l].PtDataIndex, NumPtHeaders);
 
             ObjDataTable[l].PtDataIndex = 0;
@@ -987,37 +1095,22 @@ int LoadFeatureEntryData(char *filename)
 int LoadRadarData(char *filename)
 {
     FILE* fp;
+    const unsigned int legacyRadarEntrySize = sizeof(RadarDataType) - sizeof(short);
+    const EntityTableFormat formats[] =
+    {
+        { sizeof(RadarDataType), "current" },
+        { legacyRadarEntrySize, "legacyNoFlags" },
+    };
+    unsigned int size;
+    unsigned int recordSize;
 
     if ((fp = OpenCampFile(filename, "RCD", "rb")) == NULL)
         return 0;
 
-    fseek(fp, 0, SEEK_END); // JPO - work out if the file looks the right size.
-    unsigned int size = ftell(fp);
-
-    // FF - DB Control
-    if (g_bFFDBC)
+    if (not ReadEntityTableHeader(fp, "RCD", &NumRadarEntries, &size, &recordSize, formats, sizeof(formats) / sizeof(formats[0])))
     {
-        // FF - get real count of entries
-        short iknt = 0, entries;
-        fseek(fp, 0, SEEK_END);
-        fseek(fp, -2, SEEK_CUR);
-        fread(&iknt, sizeof(short), 1, fp);
-        fseek(fp, 0, SEEK_SET);
-        // Move pointer past the 0 entries
-        fread(&entries, sizeof(short), 1, fp);
-
-        if (NumRadarEntries == 0)
-            NumRadarEntries = iknt;
-    }
-    else
-    {
-        fseek(fp, 0, SEEK_SET);
-
-        if (fread(&NumRadarEntries, sizeof(short), 1, fp) < 1)
-            return 0;
-
-        if (size not_eq sizeof(RadarDataType) * NumRadarEntries + 2)
-            return 0;
+        fclose(fp);
+        return 0;
     }
 
     //fseek(fp, 0, SEEK_SET);
@@ -1027,7 +1120,33 @@ int LoadRadarData(char *filename)
     // return 0;
     RadarDataTable = new RadarDataType[NumRadarEntries];
     ShiAssert(RadarDataTable);
-    fread(RadarDataTable, sizeof(RadarDataType), NumRadarEntries, fp);
+
+    if (recordSize == legacyRadarEntrySize)
+    {
+        memset(RadarDataTable, 0, sizeof(RadarDataType) * NumRadarEntries);
+
+        for (int i = 0; i < NumRadarEntries; i++)
+        {
+            if (fread(&RadarDataTable[i], legacyRadarEntrySize, 1, fp) < 1)
+            {
+                delete [] RadarDataTable;
+                RadarDataTable = NULL;
+                fclose(fp);
+                return 0;
+            }
+        }
+    }
+    else
+    {
+        if (not ReadCurrentEntityRecords(fp, RadarDataTable, sizeof(RadarDataType), NumRadarEntries))
+        {
+            delete [] RadarDataTable;
+            RadarDataTable = NULL;
+            fclose(fp);
+            return 0;
+        }
+    }
+
     fclose(fp);
     return 1;
 }
@@ -1083,37 +1202,22 @@ int LoadIRSTData(char *filename)
 int LoadRwrData(char *filename)
 {
     FILE* fp;
+    const unsigned int legacyRwrEntrySize = sizeof(RwrDataType) - sizeof(short);
+    const EntityTableFormat formats[] =
+    {
+        { sizeof(RwrDataType), "current" },
+        { legacyRwrEntrySize, "legacyNoFlags" },
+    };
+    unsigned int size;
+    unsigned int recordSize;
 
     if ((fp = OpenCampFile(filename, "rwd", "rb")) == NULL)
         return 0;
 
-    fseek(fp, 0, SEEK_END); // JPO - work out if the file looks the right size.
-    unsigned int size = ftell(fp);
-
-    // FF - DB Control
-    if (g_bFFDBC)
+    if (not ReadEntityTableHeader(fp, "RWD", &NumRwrEntries, &size, &recordSize, formats, sizeof(formats) / sizeof(formats[0])))
     {
-        // FF - get real count of entries
-        short iknt = 0, entries;
-        fseek(fp, 0, SEEK_END);
-        fseek(fp, -2, SEEK_CUR);
-        fread(&iknt, sizeof(short), 1, fp);
-        fseek(fp, 0, SEEK_SET);
-        // Move pointer past the 0 entries
-        fread(&entries, sizeof(short), 1, fp);
-
-        if (NumRwrEntries == 0)
-            NumRwrEntries = iknt;
-    }
-    else
-    {
-        fseek(fp, 0, SEEK_SET);
-
-        if (fread(&NumRwrEntries, sizeof(short), 1, fp) < 1)
-            return 0;
-
-        if (size not_eq sizeof(RwrDataType) * NumRwrEntries + 2)
-            return 0;
+        fclose(fp);
+        return 0;
     }
 
     //fseek(fp, 0, SEEK_SET);
@@ -1123,7 +1227,33 @@ int LoadRwrData(char *filename)
     // return 0;
     RwrDataTable = new RwrDataType[NumRwrEntries];
     ShiAssert(RwrDataTable);
-    fread(RwrDataTable, sizeof(RwrDataType), NumRwrEntries, fp);
+
+    if (recordSize == legacyRwrEntrySize)
+    {
+        memset(RwrDataTable, 0, sizeof(RwrDataType) * NumRwrEntries);
+
+        for (int i = 0; i < NumRwrEntries; i++)
+        {
+            if (fread(&RwrDataTable[i], legacyRwrEntrySize, 1, fp) < 1)
+            {
+                delete [] RwrDataTable;
+                RwrDataTable = NULL;
+                fclose(fp);
+                return 0;
+            }
+        }
+    }
+    else
+    {
+        if (not ReadCurrentEntityRecords(fp, RwrDataTable, sizeof(RwrDataType), NumRwrEntries))
+        {
+            delete [] RwrDataTable;
+            RwrDataTable = NULL;
+            fclose(fp);
+            return 0;
+        }
+    }
+
     fclose(fp);
     return 1;
 }
@@ -1275,39 +1405,23 @@ int LoadACDefData(char *filename)
 int LoadSquadronStoresData(char *filename)
 {
     FILE *fp;
+    const unsigned int legacySquadronStoreCount = 220;
+    const unsigned int legacySquadronStoresEntrySize = legacySquadronStoreCount + 3;
+    const EntityTableFormat formats[] =
+    {
+        { sizeof(SquadronStoresDataType), "current" },
+        { legacySquadronStoresEntrySize, "legacy220" },
+    };
+    unsigned int size;
+    unsigned int recordSize;
 
     if ((fp = OpenCampFile(filename, "SSD", "rb")) == NULL)
         return 0;
 
-    fseek(fp, 0, SEEK_END); // JPO - work out if the file looks the right size.
-    unsigned int size = ftell(fp);
-
-    // FF - DB Control
-    if (g_bFFDBC)
+    if (not ReadEntityTableHeader(fp, "SSD", &NumSquadTypes, &size, &recordSize, formats, sizeof(formats) / sizeof(formats[0])))
     {
-        short iknt = 0, entries = 0;
-        // FF - get real count of entries
-        fseek(fp, 0, SEEK_END);
-        fseek(fp, -2, SEEK_CUR);
-        fread(&iknt, sizeof(short), 1, fp);
-        fseek(fp, 0, SEEK_SET);
-        // Move pointer past the 0 entries
-        fread(&entries, sizeof(short), 1, fp);
-
-        if (NumSquadTypes == 0)
-            NumSquadTypes = iknt;
-    }
-    else
-    {
-        fseek(fp, 0, SEEK_SET);
-        fread(&NumSquadTypes, sizeof(short), 1, fp);
-
-        if (NumSquadTypes < 1)
-            return 0;
-
-        if (size not_eq sizeof(SquadronStoresDataType) * NumSquadTypes + 2)
-            // MAXIMUM_WEAPTYPES = 600;
-            return 0;
+        fclose(fp);
+        return 0;
     }
 
     // Check for FF new record size
@@ -1319,7 +1433,36 @@ int LoadSquadronStoresData(char *filename)
 
     SquadronStoresDataTable = new SquadronStoresDataType[NumSquadTypes];
     ShiAssert(SquadronStoresDataTable);
-    fread(SquadronStoresDataTable, sizeof(SquadronStoresDataType), NumSquadTypes, fp);
+
+    if (recordSize == legacySquadronStoresEntrySize)
+    {
+        memset(SquadronStoresDataTable, 0, sizeof(SquadronStoresDataType) * NumSquadTypes);
+
+        for (int i = 0; i < NumSquadTypes; i++)
+        {
+            if (fread(SquadronStoresDataTable[i].Stores, sizeof(uchar), legacySquadronStoreCount, fp) < legacySquadronStoreCount or
+                fread(&SquadronStoresDataTable[i].infiniteAG, sizeof(uchar), 1, fp) < 1 or
+                fread(&SquadronStoresDataTable[i].infiniteAA, sizeof(uchar), 1, fp) < 1 or
+                fread(&SquadronStoresDataTable[i].infiniteGun, sizeof(uchar), 1, fp) < 1)
+            {
+                delete [] SquadronStoresDataTable;
+                SquadronStoresDataTable = NULL;
+                fclose(fp);
+                return 0;
+            }
+        }
+    }
+    else
+    {
+        if (not ReadCurrentEntityRecords(fp, SquadronStoresDataTable, sizeof(SquadronStoresDataType), NumSquadTypes))
+        {
+            delete [] SquadronStoresDataTable;
+            SquadronStoresDataTable = NULL;
+            fclose(fp);
+            return 0;
+        }
+    }
+
     fclose(fp);
     return 1;
 }

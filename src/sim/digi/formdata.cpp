@@ -2,7 +2,7 @@
 #include "simfile.h"
 #include "digi.h"
 
-#define FORMATION_DATA_FILE   "formdat.fil"
+#define FORMATION_DATA_FILE   "sim\\acdata\\formdata\\formdat.fil"
 
 #ifdef USE_SH_POOLS
 extern MEM_POOL gReadInMemPool;

@@ -35,6 +35,52 @@ static const int SUN_GLARE_SIZE = 1024;
 unsigned char CTimeOfDay::MoonPhaseMask[8 * 64];
 unsigned char CTimeOfDay::CurrentMoonPhaseMask[8 * 64];
 
+static void SetColor(Tcolor *color, float r, float g, float b)
+{
+    color->r = r;
+    color->g = g;
+    color->b = b;
+}
+
+static void InitTODEntry(TimeOfDayStruct *tod, DWORD time, float light, float sky, float haze, float ground, float star)
+{
+    tod->Time = time;
+    SetColor(&tod->SkyColor, sky * 0.45f, sky * 0.58f, sky);
+    SetColor(&tod->HazeSkyColor, haze * 0.6f, haze * 0.68f, haze);
+    SetColor(&tod->GroundColor, ground, ground, ground * 0.9f);
+    SetColor(&tod->HazeGroundColor, ground * 0.65f, ground * 0.65f, ground * 0.6f);
+    SetColor(&tod->TextureLighting, light, light, light);
+    SetColor(&tod->BadWeatherLighting, light * 0.6f, light * 0.6f, light * 0.65f);
+    tod->Ambient = max(0.08f, light * 0.3f);
+    tod->Diffuse = max(0.15f, light * 0.75f);
+    tod->Specular = max(0.05f, light * 0.5f);
+    tod->Flag = GL_TIME_OF_DAY_USE_SUN;
+    tod->SunPitch = 0.0f;
+    tod->MoonPitch = 0.0f;
+    tod->StarIntensity = star;
+    SetColor(&tod->RainColor, 0.65f, 0.65f, 0.7f);
+    SetColor(&tod->SnowColor, 0.9f, 0.9f, 0.95f);
+    SetColor(&tod->LightningColor, 1.0f, 1.0f, 0.0f);
+    SetColor(&tod->VisColor, haze * 0.6f, haze * 0.68f, haze);
+    tod->MinVis = 0.1f;
+}
+
+static bool LoadDefaultTOD(TimeOfDayStruct **timeOfDay, int *totalTimeOfDay)
+{
+    *totalTimeOfDay = 4;
+    *timeOfDay = new TimeOfDayStruct[*totalTimeOfDay];
+
+    if (not *timeOfDay)
+        return false;
+
+    InitTODEntry(&(*timeOfDay)[0], 0, 0.18f, 0.12f, 0.18f, 0.16f, 1.0f);
+    InitTODEntry(&(*timeOfDay)[1], 21600000, 0.65f, 0.62f, 0.7f, 0.55f, 0.0f);
+    InitTODEntry(&(*timeOfDay)[2], 43200000, 1.0f, 0.95f, 0.92f, 0.75f, 0.0f);
+    InitTODEntry(&(*timeOfDay)[3], 64800000, 0.45f, 0.36f, 0.42f, 0.35f, 0.8f);
+
+    return true;
+}
+
 void CTimeOfDay::Setup(char *dataPath)
 {
     char todfile[_MAX_PATH];
@@ -61,39 +107,6 @@ void CTimeOfDay::Setup(char *dataPath)
     else
         fclose(in);
 
-    sprintf(todfile, "%s\\tod.lst", dataPath);
-    in = fopen(todfile, "r");
-
-    if (in == NULL)
-    {
-        char string[256];
-        sprintf(string, "TOD file open failed:  %s", todfile);
-        ShiError(string);
-        // We need to exit gracefully
-        return;
-    }
-
-    TimeOfDayStruct temptod;
-    TotalTimeOfDay = ReadTODFile(in, &temptod, 1);
-
-    if ( not TotalTimeOfDay)
-    {
-        fclose(in);
-        char string[256];
-        sprintf(string, "No data obtained from TOD file:  %s", todfile);
-        ShiError(string);
-    }
-
-    TimeOfDay = new TimeOfDayStruct[TotalTimeOfDay];
-
-    if ( not TimeOfDay)
-    {
-        fclose(in);
-        ShiError("Failed TOD memory allocation");
-    }
-
-    fseek(in, 0, 0);
-
     ISunYaw = IMoonYaw = 4096;
     ISunTilt = IMoonTilt = 0;
     HazeSunriseColor.r = 1.0f;
@@ -104,8 +117,43 @@ void CTimeOfDay::Setup(char *dataPath)
     HazeSunsetColor.b = 0.1f;
     Flag = 0;
 
-    ReadTODFile(in, TimeOfDay - 1);
-    fclose(in);
+    in = fopen(todfile, "r");
+
+    if (in == NULL)
+    {
+        if (not LoadDefaultTOD(&TimeOfDay, &TotalTimeOfDay))
+        {
+            ShiError("Failed default TOD memory allocation");
+            return;
+        }
+    }
+    else
+    {
+        TimeOfDayStruct temptod;
+        TotalTimeOfDay = ReadTODFile(in, &temptod, 1);
+
+        if ( not TotalTimeOfDay)
+        {
+            fclose(in);
+            char string[256];
+            sprintf(string, "No data obtained from TOD file:  %s", todfile);
+            ShiError(string);
+        }
+
+        TimeOfDay = new TimeOfDayStruct[TotalTimeOfDay];
+
+        if ( not TimeOfDay)
+        {
+            fclose(in);
+            ShiError("Failed TOD memory allocation");
+            return;
+        }
+
+        fseek(in, 0, 0);
+
+        ReadTODFile(in, TimeOfDay - 1);
+        fclose(in);
+    }
 
     SetVar(TimeOfDay);
 

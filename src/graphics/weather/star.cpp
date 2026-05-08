@@ -313,7 +313,20 @@ int CStar::Setup(char *starfile, float maxmagnitude)
     Cleanup();
     FILE *in = fopen(starfile, "r");
 
-    if (in == NULL) return 1;
+    if (in == NULL)
+    {
+        StarData *data = NEW(StarData);
+
+        if (not data)
+            return 1;
+
+        data -> totalstar = 0;
+        data -> totalcoord = 0;
+        data -> star = NULL;
+        data -> coord = NULL;
+        CurrentStarData = data;
+        return 0;
+    }
 
     char buffer[MAXSTRING];
 
@@ -497,9 +510,16 @@ int CStar::InsideRange(float starpos, float pos)
 
 void CStar::UpdateStar()
 {
+    if (not CurrentStarData)
+        return;
+
     StarRecord *star = CurrentStarData -> star;
     StarCoord *coord = CurrentStarData -> coord;
     CurrentStarData -> totalcoord = 0;
+
+    if (not star or not coord)
+        return;
+
     int i;
 
     for (i = 0; i < CurrentStarData -> totalstar; i++, star++)

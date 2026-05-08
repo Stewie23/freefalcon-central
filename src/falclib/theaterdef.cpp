@@ -38,6 +38,7 @@ extern int numZips;
 extern int* resourceHandle;
 extern int SimPathHandle;
 #define ZIPFILE_NAME    "ziplist.lst"
+#define LEGACY_ZIPFILE_NAME "ziplist.fil"
 
 extern int g_nMinTacanChannel;
 
@@ -329,8 +330,14 @@ bool TheaterList::SetNewTheater(TheaterDef *td)
 
     if ( not zipFile)
     {
+        sprintf(tmpPath, "%s\\%s", FalconDataDirectory, LEGACY_ZIPFILE_NAME);
+        zipFile = fopen(tmpPath, "r");
+    }
+
+    if ( not zipFile)
+    {
         char string[300];
-        sprintf(string, "Failed to open %s\n", tmpPath);
+        sprintf(string, "Failed to open %s or %s\\%s\n", ZIPFILE_NAME, FalconDataDirectory, LEGACY_ZIPFILE_NAME);
         OutputDebugString(string);
         ShiError(string);
         numZips = 0;
@@ -344,7 +351,11 @@ bool TheaterList::SetNewTheater(TheaterDef *td)
         {
             char tmp[256];
             fscanf(zipFile, "%*c%s", tmp);
-            sprintf(tmpPath, "%s\\%s", FalconZipsThrDirectory, tmp);
+
+            if (strchr(tmp, '\\') or strchr(tmp, '/'))
+                sprintf(tmpPath, "%s\\%s", FalconDataDirectory, tmp);
+            else
+                sprintf(tmpPath, "%s\\%s", FalconZipsThrDirectory, tmp);
 
             if ( not strnicmp(td->m_name, "Korea", 5))
                 resourceHandle[i] = ResAttach(FalconDataDirectory, tmpPath, FALSE);

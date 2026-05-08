@@ -797,7 +797,7 @@ void DigitalBrain::ReadManeuverData(void)
     // ASCII file
     // Either change the file structure, or use this compromised reading method.
     // Comments at the top of the file are preventing proper detection, thus '#'
-    if (fileType == '#')
+    if (fileType == '#' or fileType == 'A')
     {
         for (int i = 0; i < NumMnvrClasses; ++i)
         {
